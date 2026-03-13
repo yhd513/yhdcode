@@ -1,0 +1,125 @@
+from typing import List
+import requests
+import chromadb
+from sentence_transformers import CrossEncoder
+from dotenv import load_dotenv
+from google import genai
+import asyncio
+import aiohttp
+import json
+
+load_dotenv()
+
+# Ollama 本地接口地址（固定不用改）
+OLLAMA_API = "http://localhost:11434/api/embed"
+EMBED_MODEL = "ollama.rnd.huawei.com/library/bge-m3:latest"
+llm_model_id="qwen2.5-72b-instruct"
+llm_api_key="Bearer sk-1234"
+llm_base_url="http://api.openai.rnd.huawei.com/v1/chat/completions"
+
+# ===================== 分片 =====================
+def split_into_chunks(doc_file: str) -> List[str]:
+    with open(doc_file, 'r', encoding="utf-8") as file:
+        content = file.read()
+
+    return [chunk for chunk in content.split("\n\n")]
+
+
+# ===================== 调用本地 Ollama 生成向量 =====================
+def embed_chunk(chunk: str) -> List[float]:
+    payload = {
+        "model": EMBED_MODEL,
+        "input": chunk
+    }
+    response = requests.post(OLLAMA_API, json=payload)
+    return response.json()["embeddings"][0]
+
+def save_embeddings(chunks: List[str], embeddings: List[List[float]]) -> None:
+    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        chromadb_collection.add(
+            documents=[chunk],
+            embeddings=[embedding],
+            ids=[str(i)]
+        )
+
+def retrieve(query: str, top_k: int) -> List[str]:
+    query_embedding = embed_chunk(query)
+    results = chromadb_collection.query(
+        query_embeddings=[query_embedding],
+        n_results=top_k
+    )
+    return results['documents'][0]
+
+def reorder(query: str, retrieved_chunks: List[str], top_k: int) -> List[str]:
+    cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+    pairs = [[query, chunk] for chunk in retrieved_chunks]
+    scores = cross_encoder.predict(pairs)
+
+    chunk_with_scores_list = [(chunk, score) for chunk, score in zip(retrieved_chunks, scores)]
+    chunk_with_scores_list.sort(key=lambda x: x[1], reverse=True)
+
+    return [chunk for chunk, _ in chunk_with_scores_list][:top_k]
+
+async def generate(query: str, chunks: List[str]) -> str:
+    prompt = f"""你是一位知识助手，请根据用户的问题和下列片段生成准确的回答。
+
+用户问题: {query}
+
+相关片段:
+{"\n\n".join(chunks)}
+
+请基于上述内容作答，不要编造信息。"""
+
+    print(f"{prompt}\n\n---\n")
+
+    await fetch_response(prompt)
+    # asyncio.run(fetch_response(prompt))
+    return ''
+
+async def fetch_response(prompt: str):
+    headers = {
+        'Authorization': llm_api_key,
+        'Content-Type': 'application/json'
+    }
+
+    data = {
+        'model': llm_model_id,
+        'messages': [
+            {'role': 'user', 'content': prompt}
+        ]
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(llm_base_url, headers=headers, json=data) as response:
+            result = await response.json()
+            print(json.dumps(result["choices"][0].get('message').get('content'), indent=2, ensure_ascii=False))
+
+
+# ===================== 测试 =====================
+if __name__ == "__main__":
+    ## 提问前
+
+    #1、分片
+    chunks = split_into_chunks("doc.md")
+
+    #2、生成向量
+    embeddings = [embed_chunk(chunk) for chunk in chunks]
+
+    #3、保存向量
+    chromadb_client = chromadb.EphemeralClient()
+    chromadb_collection = chromadb_client.get_or_create_collection("default")
+    save_embeddings(chunks, embeddings)
+
+    ## 提问后
+    query = "哆啦A梦使用的3个秘密道具分别是什么？"
+
+    #4、召回
+    retrieved_chunks = retrieve(query, 5)
+
+    #4、重排
+    reordered_chunks = reorder(query, retrieved_chunks, 3)
+
+    #4、生成
+    google_client = genai.Client()
+    # generate(query, reordered_chunks)
+    asyncio.run(generate(query, reordered_chunks))
