@@ -3,10 +3,6 @@ import requests
 import chromadb
 from sentence_transformers import CrossEncoder
 from dotenv import load_dotenv
-from google import genai
-import asyncio
-import aiohttp
-import json
 
 load_dotenv()
 
@@ -16,6 +12,8 @@ EMBED_MODEL = "ollama.rnd.huawei.com/library/bge-m3:latest"
 llm_model_id="qwen2.5-72b-instruct"
 llm_api_key="Bearer sk-1234"
 llm_base_url="http://api.openai.rnd.huawei.com/v1/chat/completions"
+chromadb_client = chromadb.EphemeralClient()
+chromadb_collection = chromadb_client.get_or_create_collection("default")
 
 # ===================== 分片 =====================
 def split_into_chunks(doc_file: str) -> List[str]:
@@ -60,7 +58,7 @@ def reorder(query: str, retrieved_chunks: List[str], top_k: int) -> List[str]:
 
     return [chunk for chunk, _ in chunk_with_scores_list][:top_k]
 
-async def generate(query: str, chunks: List[str]) -> str:
+def generate(query: str, chunks: List[str]) -> str:
     prompt = f"""你是一位知识助手，请根据用户的问题和下列片段生成准确的回答。
 
 用户问题: {query}
@@ -72,11 +70,10 @@ async def generate(query: str, chunks: List[str]) -> str:
 
     print(f"{prompt}\n\n---\n")
 
-    await fetch_response(prompt)
-    # asyncio.run(fetch_response(prompt))
-    return ''
+    print(f"回答:\n")
+    return fetch_response(prompt)
 
-async def fetch_response(prompt: str):
+def fetch_response(prompt: str) -> str:
     headers = {
         'Authorization': llm_api_key,
         'Content-Type': 'application/json'
@@ -89,10 +86,10 @@ async def fetch_response(prompt: str):
         ]
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(llm_base_url, headers=headers, json=data) as response:
-            result = await response.json()
-            print(json.dumps(result["choices"][0].get('message').get('content'), indent=2, ensure_ascii=False))
+    response = requests.post(llm_base_url, headers=headers, json=data)
+    answer = response.json()["choices"][0].get('message').get('content')
+    print(answer)
+    return answer
 
 
 # ===================== 测试 =====================
@@ -100,7 +97,7 @@ if __name__ == "__main__":
     ## 提问前
 
     #1、分片
-    chunks = split_into_chunks("doc.md")
+    chunks = split_into_chunks("knowledagebase/doc.md")
 
     #2、生成向量
     embeddings = [embed_chunk(chunk) for chunk in chunks]
@@ -111,15 +108,36 @@ if __name__ == "__main__":
     save_embeddings(chunks, embeddings)
 
     ## 提问后
-    query = "哆啦A梦使用的3个秘密道具分别是什么？"
+    query = "综合业务区规划App有哪些计算参数？"
 
     #4、召回
     retrieved_chunks = retrieve(query, 5)
 
-    #4、重排
+    #5、重排
     reordered_chunks = reorder(query, retrieved_chunks, 3)
 
-    #4、生成
-    google_client = genai.Client()
-    # generate(query, reordered_chunks)
-    asyncio.run(generate(query, reordered_chunks))
+    #6、生成
+    generate(query, reordered_chunks)
+
+def rag_init():
+    ## 提问前
+
+    #1、分片
+    chunks = split_into_chunks("knowledagebase/full_service_area.md")
+
+    #2、生成向量
+    embeddings = [embed_chunk(chunk) for chunk in chunks]
+
+    #3、保存向量
+    save_embeddings(chunks, embeddings)
+
+
+def rag_answer(question: str) -> str:
+    #4、召回
+    retrieved_chunks = retrieve(question, 5)
+
+    #5、重排
+    reordered_chunks = reorder(question, retrieved_chunks, 3)
+
+    #6、生成
+    return generate(question, reordered_chunks)
