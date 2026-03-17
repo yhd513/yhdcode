@@ -58,13 +58,15 @@ def reorder(query: str, retrieved_chunks: List[str], top_k: int) -> List[str]:
 
     return [chunk for chunk, _ in chunk_with_scores_list][:top_k]
 
-def generate(query: str, chunks: List[str]) -> str:
+def generate(query: str, history: List[str], chunks: List[str]) -> str:
     prompt = f"""你是一位知识助手，请根据用户的问题和下列片段生成准确的回答。
 
 用户问题: {query}
 
 相关片段:
 {"\n\n".join(chunks)}
+
+历史消息: {history}
 
 请基于上述内容作答，不要编造信息。"""
 
@@ -93,37 +95,37 @@ def fetch_response(prompt: str) -> str:
 
 
 # ===================== 测试 =====================
-if __name__ == "__main__":
-    ## 提问前
-
-    #1、分片
-    chunks = split_into_chunks("knowledagebase/doc.md")
-
-    #2、生成向量
-    embeddings = [embed_chunk(chunk) for chunk in chunks]
-
-    #3、保存向量
-    chromadb_client = chromadb.EphemeralClient()
-    chromadb_collection = chromadb_client.get_or_create_collection("default")
-    save_embeddings(chunks, embeddings)
-
-    ## 提问后
-    query = "综合业务区规划App有哪些计算参数？"
-
-    #4、召回
-    retrieved_chunks = retrieve(query, 5)
-
-    #5、重排
-    reordered_chunks = reorder(query, retrieved_chunks, 3)
-
-    #6、生成
-    generate(query, reordered_chunks)
+# if __name__ == "__main__":
+#     ## 提问前
+#
+#     #1、分片
+#     chunks = split_into_chunks("knowledagebase/full_service_area.md")
+#
+#     #2、生成向量
+#     embeddings = [embed_chunk(chunk) for chunk in chunks]
+#
+#     #3、保存向量
+#     chromadb_client = chromadb.EphemeralClient()
+#     chromadb_collection = chromadb_client.get_or_create_collection("default")
+#     save_embeddings(chunks, embeddings)
+#
+#     ## 提问后
+#     query = "综合业务区规划App有哪些计算参数？"
+#
+#     #4、召回
+#     retrieved_chunks = retrieve(query, 5)
+#
+#     #5、重排
+#     reordered_chunks = reorder(query, retrieved_chunks, 3)
+#
+#     #6、生成
+#     generate(query, '', reordered_chunks)
 
 def rag_init():
     ## 提问前
 
     #1、分片
-    chunks = split_into_chunks("knowledagebase/full_service_area.md")
+    chunks = split_into_chunks("knowledagebase/yhd.md")
 
     #2、生成向量
     embeddings = [embed_chunk(chunk) for chunk in chunks]
@@ -132,7 +134,7 @@ def rag_init():
     save_embeddings(chunks, embeddings)
 
 
-def rag_answer(question: str) -> str:
+def rag_answer(question: str, history: List[str]) -> str:
     #4、召回
     retrieved_chunks = retrieve(question, 5)
 
@@ -140,4 +142,4 @@ def rag_answer(question: str) -> str:
     reordered_chunks = reorder(question, retrieved_chunks, 3)
 
     #6、生成
-    return generate(question, reordered_chunks)
+    return generate(question, history, reordered_chunks)
