@@ -5,4 +5,4 @@ chromadb==1.5.5
 sentence-transformers==5.2.3
 dotenv==1.2.1
 #opentelemetry-sdk==1.23.0
-#opentelemetry-api==1.23.0 a
+#opentelemetry-api==1.23.0
