@@ -12,7 +12,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("🤖 RAG 检索问答系统")
+st.title("🤖 RAG 智能问答")
 
 # ----------------------
 # 初始化聊天历史（上下文记忆）
