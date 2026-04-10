@@ -1,5 +1,5 @@
 import streamlit as st
-import yhd
+from rag import yhd
 
 yhd.rag_init()  # 初始化 rag 环境
 

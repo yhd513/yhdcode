@@ -125,7 +125,7 @@ def rag_init():
     ## 提问前
 
     #1、分片
-    chunks = split_into_chunks("knowledagebase/yhd.md")
+    chunks = split_into_chunks("../knowledagebase/yhd.md")
 
     #2、生成向量
     embeddings = [embed_chunk(chunk) for chunk in chunks]
